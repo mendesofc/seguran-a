@@ -17,8 +17,8 @@ O login passa a ser pelo Spring Security, em `POST /login`, com `email` e `passw
 
 - O login antigo do cliente e a verificação antiga do admin não devem continuar sendo usados.
 - Tem que impedir que a senha/hash do cliente apareça no JSON de resposta.
-- Deixei pedidos e itens restritos ao admin por enquanto, porque o endpoint atual aceita preço e desconto enviados pelo cliente. Pra liberar compra, o valor precisa ser calculado no servidor.
-- A criação de reserva exige login, mas o controller ainda precisa vincular a reserva ao cliente autenticado.
+- Deixei pedidos e itens restritos ao admin por enquanto, porque os endpoints aceitam preços enviados na requisição. Pra liberar compra, o valor precisa ser calculado no servidor.
+- Também deixei a criação de reserva só pro admin por enquanto. O controller recebe um cliente no JSON, então ainda precisa usar o cliente da sessão antes de liberar reservas comuns.
 - O envio de código por e-mail ainda precisa de limite de reenvio, e o CPF vai ser retirado na parte do cadastro.
 - Se o front estiver em outro domínio, vamos precisar configurar CORS e cookies direito.
 
