@@ -1,39 +1,48 @@
-# Segurança — ChapaQuente
+# Segurança do ChapaQuente
 
-Módulo de segurança para integrar ao projeto de [VitorCosta09/Projeto-Restaurante](https://github.com/VitorCosta09/Projeto-Restaurante).
+Vitor, deixei a parte da segurança separada aqui pra ficar mais fácil de colocar no projeto sem misturar com o resto do back.
 
-Compatibilidade planejada: **Spring Boot 4.1.1 / Java 25**, pacote `dev.trapalhoes.ChapaQuente`. Este repositório contém apenas os arquivos da segurança, sem copiar controllers ou regras de negócio do Vitor.
+Usei a estrutura que já tá no teu projeto (`dev.trapalhoes.ChapaQuente`, Java 25 e Spring Boot 4.1.1). Não mexi nas classes de pedido, produto, reserva e nem no banco.
 
-## Integração
-1. Copiar `src/main/java/dev/trapalhoes/ChapaQuente/security` para o projeto principal.
-2. No `pom.xml` do Vitor, adicionar:
-   ```xml
-   <dependency>
-       <groupId>org.springframework.boot</groupId>
-       <artifactId>spring-boot-starter-security</artifactId>
-   </dependency>
-   ```
-3. Manter o `config/PasswordConfig.java` original do Vitor. Ele já fornece um bean BCrypt; **não criar outro PasswordEncoder**.
-4. Configurar `ADMIN_EMAIL` e `ADMIN_PASSWORD_HASH` no ambiente. O hash deve ser BCrypt; nunca usar senha em texto puro.
-5. Para login pelo navegador: `GET /csrf` retorna token CSRF. Enviar esse token no header indicado ao fazer `POST /login`, com `email` e `password` como form-urlencoded. O navegador deve manter o cookie da sessão.
-6. `GET /verificacao/admin-status` indica se a sessão atual tem permissão de administrador. Requer login admin.
-7. Para login de cliente, é necessário existir cliente cadastrado com senha BCrypt na tabela `Cliente`. A busca usa JPA por e-mail, sem exigir alteração do repositório do Vitor.
-8. Se frontend e backend estiverem em domínios diferentes, configurar CORS **somente** para o domínio real e ajustar cookies HTTPS. Não usar `origins="*"` para operações autenticadas.
+## O que tem aqui
 
-## Permissões
-- Catálogo de produtos: leitura pública.
-- Cadastro de cliente e verificação de e-mail: públicos, com validações existentes.
-- Operações administrativas: exigem `ROLE_ADMIN`.
-- Reservas: escrita requer sessão de cliente ou admin; leitura e gestão exigem admin até adicionar filtro por proprietário.
-- Criação de pedidos e itens: temporariamente apenas admin, pois a API original aceita preços/descontos informados pelo cliente. Antes de liberar compra para clientes, o Vitor precisa calcular valores no servidor.
-- Demais endpoints: negados por padrão.
+- `SecurityConfig.java`: define quem pode acessar cada rota.
+- `ClienteUserDetailsService.java`: pega o cliente pelo e-mail no banco e confere a senha pelo Spring Security. O admin fica configurado por variável de ambiente.
+- `CsrfController.java`: entrega o token CSRF pro front mandar nas requisições.
+- `integration/AdminVerification.java`: versão da verificação de admin usando a sessão, sem comparar senha direto no controller.
 
-## Atenção: ajustes de integração indispensáveis
-- O controller original `ClienteController` ainda contém login antigo `POST /cliente/{id}` e retorna a entidade `Cliente`, incluindo hash de senha. **Esse endpoint é bloqueado por esta configuração**, mas deve ser substituído pelo login Spring Security.
-- Adicionar `@JsonProperty(access = JsonProperty.Access.WRITE_ONLY)` no campo `senha` da entidade `Cliente` (ou usar DTOs de resposta), para não expor hashes em outros endpoints.
-- O `AdminVerification` original compara senha em texto puro. **Substituir pelo arquivo de exemplo em `integration/AdminVerification.java`**, sem manter duas classes com o mesmo nome.
-- O `EmailVerification` original permite envio ilimitado de e-mail e usa GET com corpo. Corrigir rate limiting e mudar para POST na integração.
-- O projeto do Vitor ainda possui CPF; a remoção será feita por quem cuida do cadastro/banco. Este módulo não modifica a entidade.
-- Revisar o frontend para CSRF e sessão, e realizar testes com banco e rotas reais.
+## Pra colocar no projeto
 
-**Não foi executado build nem teste integrado neste repositório isolado.** A segurança precisa ser validada no projeto completo antes da publicação.
+1. Copia a pasta `src/main/java/dev/trapalhoes/ChapaQuente/security` pra mesma pasta do teu projeto.
+2. Adiciona essa dependência no `pom.xml`:
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-security</artifactId>
+</dependency>
+```
+
+3. Pode manter teu `PasswordConfig`, porque ele já cria o BCrypt. Não precisa fazer outro bean de `PasswordEncoder`.
+4. No ambiente, configura `ADMIN_EMAIL` e `ADMIN_PASSWORD_HASH`. A senha do admin precisa estar em hash BCrypt, não em texto normal.
+5. O login do Spring fica no `POST /login`, mandando `email` e `password` como formulário. Antes do POST, o front consulta `GET /csrf` e manda o token no header que a resposta indicar. Tem que manter o cookie da sessão.
+6. Pra consultar se é admin, usa `GET /verificacao/admin-status`. O arquivo em `integration/` é pra substituir o `AdminVerification` antigo, **não** pra deixar os dois.
+
+## Como ficaram os acessos
+
+A lista de produtos continua pública. Cadastro e verificação de e-mail também continuam acessíveis sem login. As rotas de estoque, alterações de status, exclusão e administração ficam só pro admin.
+
+Reserva pode ser criada com login de cliente ou admin, mas a listagem geral fica só pro admin por enquanto.
+
+**Deixei criação de pedidos e itens só pro admin por enquanto.** O endpoint atual recebe preço e desconto no corpo da requisição, então não dá pra liberar isso pro cliente sem calcular os valores no servidor. Pra compra normal funcionar, ainda precisa ajustar essa parte.
+
+## Coisas que precisamos acertar na integração
+
+- O login antigo do `ClienteController` (`POST /cliente/{id}`) fica bloqueado pelas regras novas. O front precisa usar o login do Spring.
+- O `ClienteController` retorna o objeto `Cliente` e isso pode mandar o hash da senha no JSON. Coloca `@JsonProperty(access = JsonProperty.Access.WRITE_ONLY)` no campo `senha` da entidade, ou usa DTO na resposta.
+- A verificação antiga do admin compara a senha em texto direto no controller. Tem que substituir pelo arquivo da pasta `integration`.
+- O envio de código por e-mail ainda precisa de limite de tentativas/reenvio. Hoje ele usa GET com body; seria melhor trocar pra POST e ajustar o front junto.
+- Se o front rodar em outro domínio, precisa configurar CORS pro domínio certo e os cookies da sessão. Não deixar `*` em rotas autenticadas.
+- A retirada do CPF fica na parte do cadastro/banco, não mexi nisso aqui.
+
+Ainda falta testar tudo junto no projeto completo, principalmente login, permissões, CSRF e o front. Deixei separado justamente pra conseguir integrar e corrigir sem bagunçar o resto.
